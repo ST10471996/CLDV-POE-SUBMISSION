@@ -1,0 +1,4 @@
+CoffeeNChill – Barista Recipe Sheet
+Espresso (COF-001): 18g fine grind, 36ml out, 25-30s extraction.
+Cappuccino: 1 espresso shot, 60ml steamed milk, 1cm foam.
+Iced Latte (CLD-201): 2 shots over ice, 200ml cold milk.

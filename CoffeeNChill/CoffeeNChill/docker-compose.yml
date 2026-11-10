@@ -1,0 +1,39 @@
+# CoffeeNChill - full stack (Part 1 + Part 2 + Part 3). One command: docker compose up -d
+# App images are pulled from Docker Hub (mandatory marking rule). Set DOCKERHUB_USERNAME in .env
+services:
+  azurite:
+    image: ${DOCKERHUB_USERNAME}/coffeenchill-azurite:${TAG:-v3.0}
+    container_name: cnc-azurite
+    ports: ["10000:10000", "10001:10001", "10002:10002"]
+    volumes: ["azurite-data:/data"]
+    restart: unless-stopped
+
+  functions:
+    image: ${DOCKERHUB_USERNAME}/coffeenchill-functions:${TAG:-v3.0}
+    container_name: cnc-functions
+    depends_on: [azurite]
+    ports: ["7071:80"]
+    environment:
+      AzureWebJobsStorage: "${STORAGE_CONNECTION:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;}"
+      FilesStorage: "${FILES_CONNECTION:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;}"
+      FUNCTIONS_WORKER_RUNTIME: dotnet-isolated
+      SimulateLifecycle: "${SIMULATE_LIFECYCLE:-true}"
+      LifecycleStepSeconds: "5"
+    restart: unless-stopped
+
+  gateway:
+    image: ${DOCKERHUB_USERNAME}/coffeenchill-gateway:${TAG:-v3.0}
+    container_name: cnc-gateway
+    depends_on: [functions]
+    ports: ["5000:8080"]
+    environment:
+      Storage__ConnectionString: "${STORAGE_CONNECTION:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;}"
+      Functions__BaseUrl: http://functions:80
+      Jwt__Key: "${JWT_KEY}"
+      Seed__AdminEmail: "${ADMIN_EMAIL:-admin@coffeenchill.ac.za}"
+      Seed__AdminPassword: "${ADMIN_PASSWORD:-Admin@12345}"
+      ASPNETCORE_ENVIRONMENT: Production
+    restart: unless-stopped
+
+volumes:
+  azurite-data:

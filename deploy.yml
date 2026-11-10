@@ -1,0 +1,67 @@
+name: CI/CD – build, test, push, deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  TAG: v3.${{ github.run_number }}
+
+jobs:
+  build-test-push-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Checkout code
+        uses: actions/checkout@v4
+
+      - name: 1. Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 2. Restore & build
+        run: dotnet build CoffeeNChill.sln -c Release
+
+      - name: 2. Run unit tests
+        run: dotnet test tests/CoffeeNChill.Tests -c Release --no-build --logger "trx"
+
+      - name: 4. Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 3+4. Build & push version-tagged images
+        run: |
+          U=${{ secrets.DOCKERHUB_USERNAME }}
+          for svc in functions gateway; do
+            ctx=src/CoffeeNChill.$( [ $svc = functions ] && echo Functions || echo Gateway )
+            docker build -t $U/coffeenchill-$svc:$TAG -t $U/coffeenchill-$svc:v3.0 -t $U/coffeenchill-$svc:latest $ctx
+            docker push --all-tags $U/coffeenchill-$svc
+          done
+          docker build -t $U/coffeenchill-azurite:$TAG -t $U/coffeenchill-azurite:v3.0 docker/azurite
+          docker push --all-tags $U/coffeenchill-azurite
+
+      - name: 5. Copy compose file to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: docker-compose.yml
+          target: ~/coffeenchill
+
+      - name: 5. SSH deploy (docker compose pull && up -d)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd ~/coffeenchill
+            sed -i "s/^TAG=.*/TAG=${{ env.TAG }}/" .env || echo "TAG=${{ env.TAG }}" >> .env
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
